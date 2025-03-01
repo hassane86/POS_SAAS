@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardHeader,
@@ -12,10 +13,11 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 
 interface LoginFormProps {
   onSubmit?: (data: {
-    email: string;
+    login: string;
     password: string;
     rememberMe: boolean;
   }) => void;
@@ -24,18 +26,45 @@ interface LoginFormProps {
 }
 
 const LoginForm: React.FC<LoginFormProps> = ({
-  onSubmit = () => {},
-  isLoading = false,
-  error = "",
+  onSubmit,
+  isLoading: propIsLoading = false,
+  error: propError = "",
 }) => {
-  const [email, setEmail] = useState("");
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isLoading, setIsLoading] = useState(propIsLoading);
+  const [error, setError] = useState(propError);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ email, password, rememberMe });
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const { error } = await signIn(login, password);
+
+      if (error) {
+        setError(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // If onSubmit prop is provided, call it
+      if (onSubmit) {
+        onSubmit({ login, password, rememberMe });
+      }
+
+      // Redirect to dashboard
+      navigate("/");
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,15 +91,15 @@ const LoginForm: React.FC<LoginFormProps> = ({
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="login">Username or Email</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="name@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="login"
+                  type="text"
+                  placeholder="username or email"
+                  value={login}
+                  onChange={(e) => setLogin(e.target.value)}
                   className="pl-10"
                   required
                 />

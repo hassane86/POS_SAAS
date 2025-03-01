@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,6 +23,7 @@ import {
   ChevronRight,
   ChevronLeft,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 
 interface NavItemProps {
   icon: React.ReactNode;
@@ -57,10 +59,10 @@ const NavItem = ({
             onClick={onClick}
             asChild
           >
-            <a href={href} className="flex items-center gap-3">
+            <Link to={href} className="flex items-center gap-3">
               {icon}
               {!isCollapsed && <span>{label}</span>}
-            </a>
+            </Link>
           </Button>
         </TooltipTrigger>
         {isCollapsed && <TooltipContent side="right">{label}</TooltipContent>}
@@ -87,7 +89,9 @@ const Sidebar = ({
   onStoreChange = () => {},
 }: SidebarProps) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [activeItem, setActiveItem] = useState("dashboard");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
 
   const mainNavItems = [
     {
@@ -109,6 +113,18 @@ const Sidebar = ({
       href: "/inventory",
     },
     {
+      id: "customers",
+      icon: <Users className="h-5 w-5" />,
+      label: "Customers",
+      href: "/customers",
+    },
+    {
+      id: "stores",
+      icon: <Store className="h-5 w-5" />,
+      label: "Stores",
+      href: "/stores",
+    },
+    {
       id: "users",
       icon: <Users className="h-5 w-5" />,
       label: "Users",
@@ -128,9 +144,38 @@ const Sidebar = ({
     },
   ];
 
+  const [activeItem, setActiveItem] = useState(() => {
+    const path = location.pathname;
+    if (path === "/") return "dashboard";
+    return (
+      mainNavItems.find((item) => path.startsWith(item.href))?.id || "dashboard"
+    );
+  });
+
   const handleNavClick = (id: string) => {
     setActiveItem(id);
   };
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/login");
+  };
+
+  // Update active item when location changes
+  React.useEffect(() => {
+    const path = location.pathname;
+    if (path === "/") {
+      setActiveItem("dashboard");
+      return;
+    }
+
+    const matchedItem = mainNavItems.find(
+      (item) => path.startsWith(item.href) && item.href !== "/",
+    );
+    if (matchedItem) {
+      setActiveItem(matchedItem.id);
+    }
+  }, [location.pathname]);
 
   return (
     <div
@@ -218,6 +263,7 @@ const Sidebar = ({
                 variant="ghost"
                 size={collapsed ? "icon" : "default"}
                 className="w-full justify-start"
+                onClick={() => navigate("/settings")}
               >
                 <Settings className="h-5 w-5 mr-3" />
                 {!collapsed && <span>Settings</span>}
@@ -236,6 +282,7 @@ const Sidebar = ({
                 variant="ghost"
                 size={collapsed ? "icon" : "default"}
                 className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50"
+                onClick={handleLogout}
               >
                 <LogOut className="h-5 w-5 mr-3" />
                 {!collapsed && <span>Logout</span>}

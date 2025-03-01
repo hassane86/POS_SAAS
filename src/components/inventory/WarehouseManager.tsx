@@ -1,15 +1,7 @@
 import React, { useState } from "react";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -24,710 +16,707 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Building2,
-  Plus,
+  Search,
+  MoreHorizontal,
   Edit,
   Trash2,
-  MoreHorizontal,
-  ArrowLeftRight,
-  Search,
-  MapPin,
-  Phone,
+  Building2,
+  Plus,
   Mail,
-  User,
+  Phone,
+  MapPin,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+import { createStore, updateStore, deleteStore } from "@/api/stores";
 
-interface Warehouse {
+interface Store {
   id: string;
   name: string;
-  address: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  phone: string;
-  email: string;
-  manager: string;
-  isMain: boolean;
-  productCount: number;
-  status: "active" | "inactive";
-}
-
-interface StockTransfer {
-  id: string;
-  sourceWarehouse: string;
-  destinationWarehouse: string;
-  date: string;
-  items: number;
-  status: "pending" | "completed" | "cancelled";
+  address?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  phone?: string;
+  email?: string;
+  is_main?: boolean;
+  status: string;
+  company_id: string;
 }
 
 interface WarehouseManagerProps {
-  warehouses?: Warehouse[];
-  transfers?: StockTransfer[];
+  stores?: Store[];
+  isLoading?: boolean;
+  onStoresChange?: () => void;
 }
 
-const WarehouseManager = ({
-  warehouses = [
-    {
-      id: "WH-001",
-      name: "Main Warehouse",
-      address: "123 Main Street",
-      city: "New York",
-      state: "NY",
-      zipCode: "10001",
-      phone: "(212) 555-1234",
-      email: "main@example.com",
-      manager: "John Smith",
-      isMain: true,
-      productCount: 1250,
-      status: "active",
-    },
-    {
-      id: "WH-002",
-      name: "East Coast Distribution",
-      address: "456 Commerce Ave",
-      city: "Boston",
-      state: "MA",
-      zipCode: "02108",
-      phone: "(617) 555-5678",
-      email: "eastcoast@example.com",
-      manager: "Sarah Johnson",
-      isMain: false,
-      productCount: 875,
-      status: "active",
-    },
-    {
-      id: "WH-003",
-      name: "West Coast Storage",
-      address: "789 Pacific Blvd",
-      city: "Los Angeles",
-      state: "CA",
-      zipCode: "90001",
-      phone: "(213) 555-9012",
-      email: "westcoast@example.com",
-      manager: "Michael Brown",
-      isMain: false,
-      productCount: 920,
-      status: "active",
-    },
-    {
-      id: "WH-004",
-      name: "Midwest Facility",
-      address: "321 Central Road",
-      city: "Chicago",
-      state: "IL",
-      zipCode: "60601",
-      phone: "(312) 555-3456",
-      email: "midwest@example.com",
-      manager: "Emily Davis",
-      isMain: false,
-      productCount: 540,
-      status: "inactive",
-    },
-  ],
-  transfers = [
-    {
-      id: "TR-001",
-      sourceWarehouse: "Main Warehouse",
-      destinationWarehouse: "East Coast Distribution",
-      date: "2023-06-10",
-      items: 45,
-      status: "completed",
-    },
-    {
-      id: "TR-002",
-      sourceWarehouse: "Main Warehouse",
-      destinationWarehouse: "West Coast Storage",
-      date: "2023-06-12",
-      items: 32,
-      status: "completed",
-    },
-    {
-      id: "TR-003",
-      sourceWarehouse: "East Coast Distribution",
-      destinationWarehouse: "Midwest Facility",
-      date: "2023-06-15",
-      items: 18,
-      status: "pending",
-    },
-    {
-      id: "TR-004",
-      sourceWarehouse: "West Coast Storage",
-      destinationWarehouse: "Main Warehouse",
-      date: "2023-06-18",
-      items: 27,
-      status: "pending",
-    },
-  ],
-}: WarehouseManagerProps) => {
-  const [activeTab, setActiveTab] = useState("warehouses");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isNewWarehouseDialogOpen, setIsNewWarehouseDialogOpen] =
-    useState(false);
-  const [isNewTransferDialogOpen, setIsNewTransferDialogOpen] = useState(false);
-  const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(
-    null,
-  );
+const WarehouseManager: React.FC<WarehouseManagerProps> = ({
+  stores = [],
+  isLoading = false,
+  onStoresChange = () => {},
+}) => {
+  const { user } = useAuth();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedStore, setSelectedStore] = useState<Store | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    address: "",
+    city: "",
+    state: "",
+    zip_code: "",
+    phone: "",
+    email: "",
+    is_main: false,
+    status: "active",
+  });
 
-  const getStatusBadge = (
-    status: "active" | "inactive" | "pending" | "completed" | "cancelled",
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
   ) => {
-    switch (status) {
-      case "active":
-        return (
-          <Badge variant="secondary" className="bg-green-100 text-green-800">
-            Active
-          </Badge>
-        );
-      case "inactive":
-        return (
-          <Badge variant="secondary" className="bg-gray-100 text-gray-800">
-            Inactive
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-            Pending
-          </Badge>
-        );
-      case "completed":
-        return (
-          <Badge variant="secondary" className="bg-green-100 text-green-800">
-            Completed
-          </Badge>
-        );
-      case "cancelled":
-        return (
-          <Badge variant="secondary" className="bg-red-100 text-red-800">
-            Cancelled
-          </Badge>
-        );
-      default:
-        return null;
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleCheckboxChange = (checked: boolean) => {
+    setFormData((prev) => ({ ...prev, is_main: checked }));
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      address: "",
+      city: "",
+      state: "",
+      zip_code: "",
+      phone: "",
+      email: "",
+      is_main: false,
+      status: "active",
+    });
+  };
+
+  const handleAddStore = async () => {
+    if (!user?.company_id) return;
+
+    setIsSaving(true);
+    try {
+      await createStore({
+        company_id: user.company_id,
+        name: formData.name,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        zip_code: formData.zip_code,
+        phone: formData.phone,
+        email: formData.email,
+        is_main: formData.is_main,
+        status: formData.status,
+      });
+
+      setIsAddDialogOpen(false);
+      resetForm();
+      onStoresChange();
+    } catch (error) {
+      console.error("Error adding store/warehouse:", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const filteredWarehouses = warehouses.filter(
-    (warehouse) =>
-      warehouse.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      warehouse.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      warehouse.state.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  const handleEditStore = async () => {
+    if (!selectedStore) return;
 
-  const filteredTransfers = transfers.filter(
-    (transfer) =>
-      transfer.sourceWarehouse
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase()) ||
-      transfer.destinationWarehouse
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase()),
-  );
+    setIsSaving(true);
+    try {
+      await updateStore(selectedStore.id, {
+        name: formData.name,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        zip_code: formData.zip_code,
+        phone: formData.phone,
+        email: formData.email,
+        is_main: formData.is_main,
+        status: formData.status,
+      });
 
-  const handleEditWarehouse = (warehouse: Warehouse) => {
-    setSelectedWarehouse(warehouse);
-    setIsNewWarehouseDialogOpen(true);
+      setIsEditDialogOpen(false);
+      setSelectedStore(null);
+      resetForm();
+      onStoresChange();
+    } catch (error) {
+      console.error("Error updating store/warehouse:", error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDeleteWarehouse = (warehouse: Warehouse) => {
-    setSelectedWarehouse(warehouse);
-    setIsDeleteDialogOpen(true);
+  const handleDeleteStore = async () => {
+    if (!selectedStore) return;
+
+    setIsSaving(true);
+    try {
+      await deleteStore(selectedStore.id);
+      setIsDeleteDialogOpen(false);
+      setSelectedStore(null);
+      onStoresChange();
+    } catch (error) {
+      console.error("Error deleting store/warehouse:", error);
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  const openEditDialog = (store: Store) => {
+    setSelectedStore(store);
+    setFormData({
+      name: store.name,
+      address: store.address || "",
+      city: store.city || "",
+      state: store.state || "",
+      zip_code: store.zip_code || "",
+      phone: store.phone || "",
+      email: store.email || "",
+      is_main: store.is_main || false,
+      status: store.status,
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const filteredStores = stores.filter(
+    (store) =>
+      store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (store.city &&
+        store.city.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (store.state &&
+        store.state.toLowerCase().includes(searchTerm.toLowerCase())),
+  );
 
   return (
-    <div className="w-full h-full bg-gray-50 p-6">
+    <div className="w-full bg-white rounded-lg shadow-sm border p-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Warehouse Management</h1>
-        <div className="flex space-x-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-            <Input
-              type="search"
-              placeholder="Search warehouses or transfers..."
-              className="pl-8 w-64"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          {activeTab === "warehouses" ? (
-            <Dialog
-              open={isNewWarehouseDialogOpen}
-              onOpenChange={setIsNewWarehouseDialogOpen}
-            >
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" /> Add Warehouse
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[600px]">
-                <DialogHeader>
-                  <DialogTitle>
-                    {selectedWarehouse ? "Edit Warehouse" : "Add New Warehouse"}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="grid grid-cols-2 gap-4 py-4">
-                  <div className="col-span-2">
-                    <label htmlFor="name" className="text-sm font-medium">
-                      Warehouse Name
-                    </label>
-                    <Input
-                      id="name"
-                      defaultValue={selectedWarehouse?.name || ""}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label htmlFor="address" className="text-sm font-medium">
-                      Address
-                    </label>
-                    <Input
-                      id="address"
-                      defaultValue={selectedWarehouse?.address || ""}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="city" className="text-sm font-medium">
-                      City
-                    </label>
-                    <Input
-                      id="city"
-                      defaultValue={selectedWarehouse?.city || ""}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="state" className="text-sm font-medium">
-                      State
-                    </label>
-                    <Input
-                      id="state"
-                      defaultValue={selectedWarehouse?.state || ""}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="zipCode" className="text-sm font-medium">
-                      Zip Code
-                    </label>
-                    <Input
-                      id="zipCode"
-                      defaultValue={selectedWarehouse?.zipCode || ""}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="phone" className="text-sm font-medium">
-                      Phone
-                    </label>
-                    <Input
-                      id="phone"
-                      defaultValue={selectedWarehouse?.phone || ""}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label htmlFor="email" className="text-sm font-medium">
-                      Email
-                    </label>
-                    <Input
-                      id="email"
-                      type="email"
-                      defaultValue={selectedWarehouse?.email || ""}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label htmlFor="manager" className="text-sm font-medium">
-                      Manager
-                    </label>
-                    <Input
-                      id="manager"
-                      defaultValue={selectedWarehouse?.manager || ""}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div className="col-span-2 flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="isMain"
-                      defaultChecked={selectedWarehouse?.isMain || false}
-                    />
-                    <label htmlFor="isMain" className="text-sm font-medium">
-                      Set as Main Warehouse
-                    </label>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsNewWarehouseDialogOpen(false);
-                      setSelectedWarehouse(null);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      // In a real app, this would save the warehouse data
-                      setIsNewWarehouseDialogOpen(false);
-                      setSelectedWarehouse(null);
-                    }}
-                  >
-                    {selectedWarehouse ? "Update" : "Add"} Warehouse
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          ) : (
-            <Dialog
-              open={isNewTransferDialogOpen}
-              onOpenChange={setIsNewTransferDialogOpen}
-            >
-              <DialogTrigger asChild>
-                <Button>
-                  <ArrowLeftRight className="mr-2 h-4 w-4" /> New Transfer
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle>Create Stock Transfer</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div>
-                    <label htmlFor="source" className="text-sm font-medium">
-                      Source Warehouse
-                    </label>
-                    <Select>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Select source warehouse">
-                          Select source warehouse
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {warehouses
-                          .filter((w) => w.status === "active")
-                          .map((warehouse) => (
-                            <SelectItem key={warehouse.id} value={warehouse.id}>
-                              {warehouse.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="destination"
-                      className="text-sm font-medium"
-                    >
-                      Destination Warehouse
-                    </label>
-                    <Select>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Select destination warehouse">
-                          Select destination warehouse
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {warehouses
-                          .filter((w) => w.status === "active")
-                          .map((warehouse) => (
-                            <SelectItem key={warehouse.id} value={warehouse.id}>
-                              {warehouse.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label htmlFor="date" className="text-sm font-medium">
-                      Transfer Date
-                    </label>
-                    <Input
-                      id="date"
-                      type="date"
-                      defaultValue={new Date().toISOString().split("T")[0]}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="products" className="text-sm font-medium">
-                      Products to Transfer
-                    </label>
-                    <div className="mt-1 p-4 border rounded-md">
-                      <p className="text-sm text-gray-500 text-center">
-                        Select products from inventory to transfer
-                      </p>
-                      <Button variant="outline" className="w-full mt-2">
-                        <Plus className="mr-2 h-4 w-4" /> Add Products
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsNewTransferDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button onClick={() => setIsNewTransferDialogOpen(false)}>
-                    Create Transfer
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+        <h2 className="text-xl font-semibold text-gray-800">
+          Warehouses & Stores
+        </h2>
+        <Button
+          onClick={() => {
+            resetForm();
+            setIsAddDialogOpen(true);
+          }}
+        >
+          <Plus className="mr-2 h-4 w-4" /> Add Warehouse/Store
+        </Button>
+      </div>
+
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div className="relative flex-1 w-full md:max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+          <Input
+            placeholder="Search warehouses and stores..."
+            className="pl-8"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
       </div>
 
-      <Card className="bg-white">
-        <CardHeader>
-          <Tabs
-            defaultValue="warehouses"
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="w-full"
-          >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="warehouses">
-                <Building2 className="mr-2 h-4 w-4" /> Warehouses
-              </TabsTrigger>
-              <TabsTrigger value="transfers">
-                <ArrowLeftRight className="mr-2 h-4 w-4" /> Stock Transfers
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </CardHeader>
-        <CardContent>
-          {activeTab === "warehouses" ? (
-            <Table>
-              <TableCaption>List of all warehouses in the system</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Manager</TableHead>
-                  <TableHead>Products</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+      <div className="rounded-md border overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Location</TableHead>
+              <TableHead>Contact</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                  <div className="flex justify-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : filteredStores.length > 0 ? (
+              filteredStores.map((store) => (
+                <TableRow key={store.id}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-gray-500" />
+                      <span>{store.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {store.city || store.state ? (
+                      <div className="flex items-center">
+                        <MapPin className="h-4 w-4 mr-1 text-gray-500" />
+                        <span>
+                          {[store.city, store.state].filter(Boolean).join(", ")}
+                        </span>
+                      </div>
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      {store.email && (
+                        <div className="flex items-center text-sm">
+                          <Mail className="h-3 w-3 mr-1 text-gray-500" />
+                          <span>{store.email}</span>
+                        </div>
+                      )}
+                      {store.phone && (
+                        <div className="flex items-center text-sm">
+                          <Phone className="h-3 w-3 mr-1 text-gray-500" />
+                          <span>{store.phone}</span>
+                        </div>
+                      )}
+                      {!store.email && !store.phone && "-"}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {store.is_main ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-blue-50 text-blue-700 border-blue-100"
+                      >
+                        Main Store
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">Warehouse</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="secondary"
+                      className={`${store.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}`}
+                    >
+                      {store.status === "active" ? "Active" : "Inactive"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal className="h-4 w-4" />
+                          <span className="sr-only">Open menu</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditDialog(store)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          <span>Edit</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-red-600"
+                          onClick={() => {
+                            setSelectedStore(store);
+                            setIsDeleteDialogOpen(true);
+                          }}
+                          disabled={store.is_main}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          <span>Delete</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredWarehouses.length > 0 ? (
-                  filteredWarehouses.map((warehouse) => (
-                    <TableRow key={warehouse.id}>
-                      <TableCell className="font-medium">
-                        {warehouse.id}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          {warehouse.name}
-                          {warehouse.isMain && (
-                            <Badge variant="outline" className="ml-2">
-                              Main
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="flex items-center">
-                            <MapPin className="h-3 w-3 mr-1 text-gray-500" />
-                            {warehouse.city}, {warehouse.state}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {warehouse.address}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="flex items-center">
-                            <User className="h-3 w-3 mr-1 text-gray-500" />
-                            {warehouse.manager}
-                          </span>
-                          <span className="flex items-center text-xs text-gray-500">
-                            <Phone className="h-3 w-3 mr-1" />
-                            {warehouse.phone}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{warehouse.productCount}</TableCell>
-                      <TableCell>{getStatusBadge(warehouse.status)}</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Open menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleEditWarehouse(warehouse)}
-                            >
-                              <Edit className="mr-2 h-4 w-4" />
-                              <span>Edit Warehouse</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDeleteWarehouse(warehouse)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              <span>Delete Warehouse</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-4">
-                      No warehouses found matching your search.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          ) : (
-            <Table>
-              <TableCaption>
-                List of all stock transfers between warehouses
-              </TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Destination</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Items</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTransfers.length > 0 ? (
-                  filteredTransfers.map((transfer) => (
-                    <TableRow key={transfer.id}>
-                      <TableCell className="font-medium">
-                        {transfer.id}
-                      </TableCell>
-                      <TableCell>{transfer.sourceWarehouse}</TableCell>
-                      <TableCell>{transfer.destinationWarehouse}</TableCell>
-                      <TableCell>{transfer.date}</TableCell>
-                      <TableCell>{transfer.items}</TableCell>
-                      <TableCell>{getStatusBadge(transfer.status)}</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Open menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              <Edit className="mr-2 h-4 w-4" />
-                              <span>View Details</span>
-                            </DropdownMenuItem>
-                            {transfer.status === "pending" && (
-                              <>
-                                <DropdownMenuItem>
-                                  <ArrowLeftRight className="mr-2 h-4 w-4" />
-                                  <span>Complete Transfer</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-600">
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  <span>Cancel Transfer</span>
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-4">
-                      No transfers found matching your search.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={6}
+                  className="h-24 text-center text-muted-foreground"
+                >
+                  {searchTerm
+                    ? "No warehouses or stores found matching your search."
+                    : "No warehouses or stores found. Add your first location!"}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-      <AlertDialog
-        open={isDeleteDialogOpen}
-        onOpenChange={setIsDeleteDialogOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the warehouse "
-              {selectedWarehouse?.name}" and all its data. This action cannot be
-              undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
+      {/* Add Store/Warehouse Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Add New Warehouse/Store</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium mb-1">
+                Name *
+              </label>
+              <Input
+                id="name"
+                name="name"
+                value={formData.name}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="address"
+                className="block text-sm font-medium mb-1"
+              >
+                Address
+              </label>
+              <Input
+                id="address"
+                name="address"
+                value={formData.address}
+                onChange={handleInputChange}
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label
+                  htmlFor="city"
+                  className="block text-sm font-medium mb-1"
+                >
+                  City
+                </label>
+                <Input
+                  id="city"
+                  name="city"
+                  value={formData.city}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="state"
+                  className="block text-sm font-medium mb-1"
+                >
+                  State
+                </label>
+                <Input
+                  id="state"
+                  name="state"
+                  value={formData.state}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="zip_code"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Zip Code
+                </label>
+                <Input
+                  id="zip_code"
+                  name="zip_code"
+                  value={formData.zip_code}
+                  onChange={handleInputChange}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="phone"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Phone
+                </label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="is_main"
+                checked={formData.is_main}
+                onChange={(e) => handleCheckboxChange(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <label htmlFor="is_main" className="text-sm font-medium">
+                This is the main store
+              </label>
+            </div>
+
+            <div>
+              <label
+                htmlFor="status"
+                className="block text-sm font-medium mb-1"
+              >
+                Status
+              </label>
+              <select
+                id="status"
+                name="status"
+                value={formData.status}
+                onChange={handleInputChange}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
               onClick={() => {
-                setIsDeleteDialogOpen(false);
-                setSelectedWarehouse(null);
+                setIsAddDialogOpen(false);
+                resetForm();
               }}
             >
               Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                // In a real app, this would delete the warehouse
-                setIsDeleteDialogOpen(false);
-                setSelectedWarehouse(null);
-              }}
-              className="bg-red-600 hover:bg-red-700"
+            </Button>
+            <Button
+              onClick={handleAddStore}
+              disabled={isSaving || !formData.name}
             >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              {isSaving ? "Adding..." : "Add Location"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Store/Warehouse Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Warehouse/Store</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div>
+              <label
+                htmlFor="edit-name"
+                className="block text-sm font-medium mb-1"
+              >
+                Name *
+              </label>
+              <Input
+                id="edit-name"
+                name="name"
+                value={formData.name}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-address"
+                className="block text-sm font-medium mb-1"
+              >
+                Address
+              </label>
+              <Input
+                id="edit-address"
+                name="address"
+                value={formData.address}
+                onChange={handleInputChange}
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label
+                  htmlFor="edit-city"
+                  className="block text-sm font-medium mb-1"
+                >
+                  City
+                </label>
+                <Input
+                  id="edit-city"
+                  name="city"
+                  value={formData.city}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="edit-state"
+                  className="block text-sm font-medium mb-1"
+                >
+                  State
+                </label>
+                <Input
+                  id="edit-state"
+                  name="state"
+                  value={formData.state}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="edit-zip_code"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Zip Code
+                </label>
+                <Input
+                  id="edit-zip_code"
+                  name="zip_code"
+                  value={formData.zip_code}
+                  onChange={handleInputChange}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="edit-phone"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Phone
+                </label>
+                <Input
+                  id="edit-phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="edit-email"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Email
+                </label>
+                <Input
+                  id="edit-email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="edit-is_main"
+                checked={formData.is_main}
+                onChange={(e) => handleCheckboxChange(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <label htmlFor="edit-is_main" className="text-sm font-medium">
+                This is the main store
+              </label>
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-status"
+                className="block text-sm font-medium mb-1"
+              >
+                Status
+              </label>
+              <select
+                id="edit-status"
+                name="status"
+                value={formData.status}
+                onChange={handleInputChange}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditDialogOpen(false);
+                setSelectedStore(null);
+                resetForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEditStore}
+              disabled={isSaving || !formData.name}
+            >
+              {isSaving ? "Updating..." : "Update Location"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deletion</DialogTitle>
+          </DialogHeader>
+          <p className="py-4">
+            Are you sure you want to delete {selectedStore?.name}? This action
+            cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteStore}
+              disabled={isSaving}
+            >
+              {isSaving ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

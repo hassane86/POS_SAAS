@@ -1,10 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ProductsTable from "./ProductsTable";
 import CategoryManager from "./CategoryManager";
 import SupplierManager from "./SupplierManager";
 import WarehouseManager from "./WarehouseManager";
 import { Package, Folder, Users, Building2 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+import { getProducts, getCategories } from "@/api/products";
+import { getSuppliers } from "@/api/suppliers";
+import { getStores } from "@/api/stores";
 
 interface InventoryManagementProps {
   activeTab?: string;
@@ -15,7 +20,46 @@ const InventoryManagement: React.FC<InventoryManagementProps> = ({
   activeTab = "products",
   onTabChange = () => {},
 }) => {
+  const { user } = useAuth();
   const [currentTab, setCurrentTab] = useState(activeTab);
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [stores, setStores] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (user?.company_id) {
+      loadInventoryData();
+    }
+  }, [user]);
+
+  const loadInventoryData = async () => {
+    if (!user?.company_id) return;
+
+    setIsLoading(true);
+    try {
+      // Load products with inventory data
+      const productsData = await getProducts(user.company_id);
+      setProducts(productsData);
+
+      // Load categories
+      const categoriesData = await getCategories(user.company_id);
+      setCategories(categoriesData);
+
+      // Load suppliers
+      const suppliersData = await getSuppliers(user.company_id);
+      setSuppliers(suppliersData);
+
+      // Load stores/warehouses
+      const storesData = await getStores(user.company_id);
+      setStores(storesData);
+    } catch (error) {
+      console.error("Error loading inventory data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleTabChange = (value: string) => {
     setCurrentTab(value);
@@ -65,19 +109,36 @@ const InventoryManagement: React.FC<InventoryManagementProps> = ({
           {/* Tab Contents */}
           <div className="mt-6">
             <TabsContent value="products" className="m-0">
-              <ProductsTable />
+              <ProductsTable
+                products={products}
+                categories={categories}
+                isLoading={isLoading}
+                onProductsChange={loadInventoryData}
+              />
             </TabsContent>
 
             <TabsContent value="categories" className="m-0">
-              <CategoryManager />
+              <CategoryManager
+                categories={categories}
+                isLoading={isLoading}
+                onCategoriesChange={loadInventoryData}
+              />
             </TabsContent>
 
             <TabsContent value="suppliers" className="m-0">
-              <SupplierManager />
+              <SupplierManager
+                suppliers={suppliers}
+                isLoading={isLoading}
+                onSuppliersChange={loadInventoryData}
+              />
             </TabsContent>
 
             <TabsContent value="warehouses" className="m-0">
-              <WarehouseManager />
+              <WarehouseManager
+                stores={stores}
+                isLoading={isLoading}
+                onStoresChange={loadInventoryData}
+              />
             </TabsContent>
           </div>
         </Tabs>

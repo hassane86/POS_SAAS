@@ -1,7 +1,11 @@
-import React, { ReactNode } from "react";
+import React, { ReactNode, useEffect, useState } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { useAuth } from "@/lib/auth";
+import { getCurrentUser, getUserStores } from "@/api/auth";
+import { Store, User } from "@/types/database";
 
 interface DashboardLayoutProps {
   children?: ReactNode;
@@ -58,7 +62,37 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onStoreChange = () => {},
   onMenuToggle = () => {},
 }) => {
+  const { user: authUser } = useAuth();
+  const navigate = useNavigate();
+  const [dbUser, setDbUser] = useState<User | null>(null);
+  const [userStores, setUserStores] = useState<Store[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
+
+  useEffect(() => {
+    const loadUserData = async () => {
+      if (authUser) {
+        try {
+          const userData = await getCurrentUser();
+          if (userData) {
+            setDbUser(userData);
+
+            // Get user's stores
+            const storesData = await getUserStores(userData.id);
+            if (storesData && storesData.length > 0) {
+              setUserStores(storesData.map((item: any) => item.stores));
+            }
+          }
+        } catch (error) {
+          console.error("Error loading user data:", error);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadUserData();
+  }, [authUser]);
 
   const handleMenuToggle = () => {
     setIsMobileSidebarOpen(!isMobileSidebarOpen);
@@ -101,7 +135,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           notifications={notifications}
           onMenuToggle={handleMenuToggle}
         />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="flex-1 overflow-auto">{children || <Outlet />}</main>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -31,6 +31,10 @@ import {
   Save,
   X,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
+import { getRoles, createRole, updateRole, deleteRole } from "@/api/roles";
+import { getPermissions, updateRolePermissions } from "@/api/permissions";
 
 interface Permission {
   id: string;
@@ -43,8 +47,9 @@ interface Role {
   id: string;
   name: string;
   description: string;
+  company_id: string;
   permissions: string[];
-  isDefault?: boolean;
+  is_default?: boolean;
 }
 
 interface RolePermissionEditorProps {
@@ -56,157 +61,196 @@ interface RolePermissionEditorProps {
 }
 
 const RolePermissionEditor: React.FC<RolePermissionEditorProps> = ({
-  roles = [
-    {
-      id: "admin",
-      name: "Administrator",
-      description: "Full access to all system features",
-      permissions: ["all"],
-      isDefault: true,
-    },
-    {
-      id: "manager",
-      name: "Store Manager",
-      description: "Can manage store operations and staff",
-      permissions: [
-        "sales.view",
-        "sales.create",
-        "inventory.view",
-        "inventory.manage",
-        "users.view",
-      ],
-    },
-    {
-      id: "cashier",
-      name: "Cashier",
-      description: "Can process sales and view products",
-      permissions: ["sales.view", "sales.create", "inventory.view"],
-    },
-  ],
-  permissions = [
-    {
-      id: "all",
-      name: "All Permissions",
-      description: "Full system access",
-      module: "system",
-    },
-    {
-      id: "sales.view",
-      name: "View Sales",
-      description: "Can view sales data",
-      module: "sales",
-    },
-    {
-      id: "sales.create",
-      name: "Create Sales",
-      description: "Can create new sales",
-      module: "sales",
-    },
-    {
-      id: "sales.void",
-      name: "Void Sales",
-      description: "Can void/cancel sales",
-      module: "sales",
-    },
-    {
-      id: "inventory.view",
-      name: "View Inventory",
-      description: "Can view products and stock",
-      module: "inventory",
-    },
-    {
-      id: "inventory.manage",
-      name: "Manage Inventory",
-      description: "Can add/edit products and stock",
-      module: "inventory",
-    },
-    {
-      id: "users.view",
-      name: "View Users",
-      description: "Can view user accounts",
-      module: "users",
-    },
-    {
-      id: "users.manage",
-      name: "Manage Users",
-      description: "Can add/edit user accounts",
-      module: "users",
-    },
-    {
-      id: "reports.view",
-      name: "View Reports",
-      description: "Can view system reports",
-      module: "reports",
-    },
-    {
-      id: "settings.view",
-      name: "View Settings",
-      description: "Can view system settings",
-      module: "settings",
-    },
-    {
-      id: "settings.manage",
-      name: "Manage Settings",
-      description: "Can modify system settings",
-      module: "settings",
-    },
-  ],
+  roles: propRoles,
+  permissions: propPermissions,
   onSaveRole = () => {},
   onDeleteRole = () => {},
   onUpdatePermissions = () => {},
 }) => {
-  const [selectedRoleId, setSelectedRoleId] = useState<string>(
-    roles[0]?.id || "",
-  );
+  const { user } = useAuth();
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = useState<string>("");
   const [editMode, setEditMode] = useState<boolean>(false);
   const [newRole, setNewRole] = useState<boolean>(false);
   const [editedRole, setEditedRole] = useState<Role>({
     id: "",
     name: "",
     description: "",
+    company_id: "",
     permissions: [],
   });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const selectedRole = roles.find((role) => role.id === selectedRoleId);
+  useEffect(() => {
+    if (user?.company_id) {
+      loadRolesAndPermissions();
+    }
+  }, [user]);
+
+  const loadRolesAndPermissions = async () => {
+    setIsLoading(true);
+    try {
+      if (!user?.company_id) return;
+
+      // Load roles
+      const rolesData = await getRoles(user.company_id);
+      setRoles(rolesData);
+
+      // Load permissions
+      const permissionsData = await getPermissions();
+      setPermissions(permissionsData);
+
+      // Select the first role by default
+      if (rolesData.length > 0) {
+        setSelectedRoleId(rolesData[0].id);
+        await loadRolePermissions(rolesData[0].id);
+      }
+    } catch (error) {
+      console.error("Error loading roles and permissions:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadRolePermissions = async (roleId: string) => {
+    try {
+      const { data } = await supabase
+        .from("role_permissions")
+        .select("permission_id")
+        .eq("role_id", roleId);
+
+      if (data) {
+        const permissionIds = data.map((item) => item.permission_id);
+        setEditedRole((prev) => ({ ...prev, permissions: permissionIds }));
+      } else {
+        setEditedRole((prev) => ({ ...prev, permissions: [] }));
+      }
+    } catch (error) {
+      console.error("Error loading role permissions:", error);
+      setEditedRole((prev) => ({ ...prev, permissions: [] }));
+    }
+  };
 
   const handleRoleSelect = (roleId: string) => {
     setSelectedRoleId(roleId);
     setEditMode(false);
     setNewRole(false);
+
+    const selectedRole = roles.find((role) => role.id === roleId);
+    if (selectedRole) {
+      loadRolePermissions(roleId);
+    }
   };
 
   const handleEditRole = () => {
+    const selectedRole = roles.find((role) => role.id === selectedRoleId);
     if (selectedRole) {
-      setEditedRole({ ...selectedRole });
+      setEditedRole({
+        id: selectedRole.id,
+        name: selectedRole.name,
+        description: selectedRole.description || "",
+        company_id: selectedRole.company_id,
+        permissions: selectedRole.permissions || [],
+      });
       setEditMode(true);
       setNewRole(false);
     }
   };
 
   const handleNewRole = () => {
+    if (!user?.company_id) return;
+
     setEditedRole({
       id: `role-${Date.now()}`,
       name: "",
       description: "",
+      company_id: user.company_id,
       permissions: [],
     });
     setEditMode(true);
     setNewRole(true);
   };
 
-  const handleSaveRole = () => {
-    onSaveRole(editedRole);
-    setEditMode(false);
-    if (newRole) {
-      setSelectedRoleId(editedRole.id);
+  const handleSaveRole = async () => {
+    setIsSaving(true);
+    try {
+      if (newRole) {
+        // Create new role
+        const newRoleData = await createRole({
+          name: editedRole.name,
+          description: editedRole.description,
+          company_id: editedRole.company_id,
+          is_default: false,
+        });
+
+        // Update permissions for the new role
+        if (editedRole.permissions.length > 0) {
+          await updateRolePermissions(newRoleData.id, editedRole.permissions);
+        }
+
+        setRoles([
+          ...roles,
+          { ...newRoleData, permissions: editedRole.permissions },
+        ]);
+        setSelectedRoleId(newRoleData.id);
+      } else {
+        // Update existing role
+        const updatedRole = await updateRole(editedRole.id, {
+          name: editedRole.name,
+          description: editedRole.description,
+        });
+
+        // Update permissions
+        await updateRolePermissions(editedRole.id, editedRole.permissions);
+
+        setRoles(
+          roles.map((r) =>
+            r.id === updatedRole.id
+              ? { ...updatedRole, permissions: editedRole.permissions }
+              : r,
+          ),
+        );
+      }
+
+      setEditMode(false);
       setNewRole(false);
+    } catch (error) {
+      console.error("Error saving role:", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleDeleteRole = () => {
-    if (selectedRole && !selectedRole.isDefault) {
-      onDeleteRole(selectedRole.id);
-      setSelectedRoleId(roles[0]?.id || "");
+  const handleDeleteRole = async () => {
+    const selectedRole = roles.find((role) => role.id === selectedRoleId);
+    if (!selectedRole || selectedRole.is_default) return;
+
+    setIsSaving(true);
+    try {
+      await deleteRole(selectedRole.id);
+
+      const updatedRoles = roles.filter((r) => r.id !== selectedRole.id);
+      setRoles(updatedRoles);
+
+      if (updatedRoles.length > 0) {
+        setSelectedRoleId(updatedRoles[0].id);
+        await loadRolePermissions(updatedRoles[0].id);
+      } else {
+        setSelectedRoleId("");
+        setEditedRole({
+          id: "",
+          name: "",
+          description: "",
+          company_id: user?.company_id || "",
+          permissions: [],
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting role:", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -246,15 +290,36 @@ const RolePermissionEditor: React.FC<RolePermissionEditorProps> = ({
     }
   };
 
-  const handleTogglePermission = (permissionId: string) => {
-    if (!selectedRole || editMode) return;
+  const handleTogglePermission = async (permissionId: string) => {
+    if (!selectedRoleId || editMode) return;
 
-    const hasPermission = selectedRole.permissions.includes(permissionId);
+    const selectedRole = roles.find((role) => role.id === selectedRoleId);
+    if (!selectedRole) return;
+
+    const hasPermission = editedRole.permissions.includes(permissionId);
     const updatedPermissions = hasPermission
-      ? selectedRole.permissions.filter((id) => id !== permissionId)
-      : [...selectedRole.permissions, permissionId];
+      ? editedRole.permissions.filter((id) => id !== permissionId)
+      : [...editedRole.permissions, permissionId];
 
-    onUpdatePermissions(selectedRole.id, updatedPermissions);
+    setEditedRole({
+      ...editedRole,
+      permissions: updatedPermissions,
+    });
+
+    try {
+      await updateRolePermissions(selectedRoleId, updatedPermissions);
+
+      // Update the roles array with the new permissions
+      setRoles(
+        roles.map((r) =>
+          r.id === selectedRoleId
+            ? { ...r, permissions: updatedPermissions }
+            : r,
+        ),
+      );
+    } catch (error) {
+      console.error("Error updating permissions:", error);
+    }
   };
 
   // Group permissions by module
@@ -269,8 +334,18 @@ const RolePermissionEditor: React.FC<RolePermissionEditorProps> = ({
     {},
   );
 
+  const selectedRole = roles.find((role) => role.id === selectedRoleId);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full bg-white rounded-lg shadow-sm border">
+    <div className="w-full h-full bg-white rounded-lg shadow-sm border p-4">
       <Tabs defaultValue="roles" className="w-full">
         <TabsList className="w-full grid grid-cols-2 mb-4">
           <TabsTrigger value="roles">Roles</TabsTrigger>
@@ -297,7 +372,7 @@ const RolePermissionEditor: React.FC<RolePermissionEditorProps> = ({
                   >
                     <div className="flex justify-between items-center">
                       <div className="font-medium">{role.name}</div>
-                      {role.isDefault && (
+                      {role.is_default && (
                         <Badge variant="secondary" className="text-xs">
                           Default
                         </Badge>
@@ -330,7 +405,7 @@ const RolePermissionEditor: React.FC<RolePermissionEditorProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={handleEditRole}
-                        disabled={selectedRole.isDefault}
+                        disabled={selectedRole.is_default}
                       >
                         <Edit className="h-4 w-4 mr-1" /> Edit
                       </Button>
@@ -338,7 +413,7 @@ const RolePermissionEditor: React.FC<RolePermissionEditorProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={handleDeleteRole}
-                        disabled={selectedRole.isDefault}
+                        disabled={selectedRole.is_default}
                         className="text-red-500 hover:text-red-700"
                       >
                         <Trash className="h-4 w-4 mr-1" /> Delete
@@ -360,8 +435,8 @@ const RolePermissionEditor: React.FC<RolePermissionEditorProps> = ({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                               {modulePermissions.map((permission) => {
                                 const isGranted =
-                                  selectedRole.permissions.includes("all") ||
-                                  selectedRole.permissions.includes(
+                                  editedRole.permissions.includes("all") ||
+                                  editedRole.permissions.includes(
                                     permission.id,
                                   );
                                 return (
@@ -489,8 +564,39 @@ const RolePermissionEditor: React.FC<RolePermissionEditorProps> = ({
                     </div>
 
                     <div className="pt-4 flex justify-end">
-                      <Button onClick={handleSaveRole}>
-                        <Save className="h-4 w-4 mr-1" /> Save Role
+                      <Button
+                        onClick={handleSaveRole}
+                        disabled={isSaving || !editedRole.name}
+                      >
+                        {isSaving ? (
+                          <>
+                            <svg
+                              className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-4 w-4 mr-1" /> Save Role
+                          </>
+                        )}
                       </Button>
                     </div>
                   </div>

@@ -1,13 +1,5 @@
 import React, { useState } from "react";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from "@/components/ui/card";
-import {
   Table,
   TableBody,
   TableCaption,
@@ -54,111 +46,173 @@ import {
   Package,
   Phone,
   Mail,
-  MapPin,
   Globe,
-  User,
+  Truck,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+import {
+  createSupplier,
+  updateSupplier,
+  deleteSupplier,
+} from "@/api/suppliers";
 
 interface Supplier {
   id: string;
   name: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
-  address: string;
+  contact_person?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
   website?: string;
-  status: "active" | "inactive";
-  productsCount: number;
-  lastOrderDate?: string;
+  status: string;
+  company_id: string;
 }
 
 interface SupplierManagerProps {
   suppliers?: Supplier[];
+  isLoading?: boolean;
+  onSuppliersChange?: () => void;
 }
 
-const SupplierManager = ({ suppliers = [] }: SupplierManagerProps) => {
+const SupplierManager: React.FC<SupplierManagerProps> = ({
+  suppliers = [],
+  isLoading = false,
+  onSuppliersChange = () => {},
+}) => {
+  const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(
     null,
   );
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
+  const [isSaving, setIsSaving] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    contact_person: "",
+    email: "",
+    phone: "",
+    address: "",
+    website: "",
+    status: "active",
+  });
 
-  // Default suppliers if none provided
-  const defaultSuppliers: Supplier[] = [
-    {
-      id: "SUP-001",
-      name: "Global Electronics Inc.",
-      contactPerson: "John Smith",
-      email: "john@globalelectronics.com",
-      phone: "+1 (555) 123-4567",
-      address: "123 Tech Blvd, San Francisco, CA 94107",
-      website: "www.globalelectronics.com",
-      status: "active",
-      productsCount: 42,
-      lastOrderDate: "2023-05-15",
-    },
-    {
-      id: "SUP-002",
-      name: "Premium Office Supplies",
-      contactPerson: "Sarah Johnson",
-      email: "sarah@premiumoffice.com",
-      phone: "+1 (555) 987-6543",
-      address: "456 Market St, Chicago, IL 60601",
-      website: "www.premiumoffice.com",
-      status: "active",
-      productsCount: 28,
-      lastOrderDate: "2023-06-02",
-    },
-    {
-      id: "SUP-003",
-      name: "Wholesale Furniture Co.",
-      contactPerson: "Michael Brown",
-      email: "michael@wholesalefurniture.com",
-      phone: "+1 (555) 456-7890",
-      address: "789 Oak Ave, Atlanta, GA 30301",
-      website: "www.wholesalefurniture.com",
-      status: "inactive",
-      productsCount: 15,
-      lastOrderDate: "2023-04-10",
-    },
-    {
-      id: "SUP-004",
-      name: "Tech Accessories Ltd.",
-      contactPerson: "Emily Davis",
-      email: "emily@techaccessories.com",
-      phone: "+1 (555) 234-5678",
-      address: "321 Pine St, Seattle, WA 98101",
-      website: "www.techaccessories.com",
-      status: "active",
-      productsCount: 36,
-      lastOrderDate: "2023-06-10",
-    },
-    {
-      id: "SUP-005",
-      name: "Food & Beverage Distributors",
-      contactPerson: "Robert Wilson",
-      email: "robert@fbdistributors.com",
-      phone: "+1 (555) 876-5432",
-      address: "567 Maple Rd, Dallas, TX 75201",
-      website: "www.fbdistributors.com",
-      status: "active",
-      productsCount: 53,
-      lastOrderDate: "2023-06-15",
-    },
-  ];
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-  const displaySuppliers = suppliers.length > 0 ? suppliers : defaultSuppliers;
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      contact_person: "",
+      email: "",
+      phone: "",
+      address: "",
+      website: "",
+      status: "active",
+    });
+  };
+
+  const handleAddSupplier = async () => {
+    if (!user?.company_id) return;
+
+    setIsSaving(true);
+    try {
+      await createSupplier({
+        company_id: user.company_id,
+        name: formData.name,
+        contact_person: formData.contact_person,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+        website: formData.website,
+        status: formData.status,
+      });
+
+      setIsAddDialogOpen(false);
+      resetForm();
+      onSuppliersChange();
+    } catch (error) {
+      console.error("Error adding supplier:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditSupplier = async () => {
+    if (!selectedSupplier) return;
+
+    setIsSaving(true);
+    try {
+      await updateSupplier(selectedSupplier.id, {
+        name: formData.name,
+        contact_person: formData.contact_person,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+        website: formData.website,
+        status: formData.status,
+      });
+
+      setIsEditDialogOpen(false);
+      setSelectedSupplier(null);
+      resetForm();
+      onSuppliersChange();
+    } catch (error) {
+      console.error("Error updating supplier:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteSupplier = async () => {
+    if (!selectedSupplier) return;
+
+    setIsSaving(true);
+    try {
+      await deleteSupplier(selectedSupplier.id);
+      setIsDeleteDialogOpen(false);
+      setSelectedSupplier(null);
+      onSuppliersChange();
+    } catch (error) {
+      console.error("Error deleting supplier:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const openEditDialog = (supplier: Supplier) => {
+    setSelectedSupplier(supplier);
+    setFormData({
+      name: supplier.name,
+      contact_person: supplier.contact_person || "",
+      email: supplier.email || "",
+      phone: supplier.phone || "",
+      address: supplier.address || "",
+      website: supplier.website || "",
+      status: supplier.status,
+    });
+    setIsEditDialogOpen(true);
+  };
 
   // Filter suppliers based on search query and active tab
-  const filteredSuppliers = displaySuppliers.filter((supplier) => {
+  const filteredSuppliers = suppliers.filter((supplier) => {
     const matchesSearch =
       supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      supplier.contactPerson
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase()) ||
-      supplier.email.toLowerCase().includes(searchQuery.toLowerCase());
+      (supplier.contact_person &&
+        supplier.contact_person
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase())) ||
+      (supplier.email &&
+        supplier.email.toLowerCase().includes(searchQuery.toLowerCase()));
 
     if (activeTab === "all") return matchesSearch;
     if (activeTab === "active")
@@ -167,27 +221,6 @@ const SupplierManager = ({ suppliers = [] }: SupplierManagerProps) => {
       return matchesSearch && supplier.status === "inactive";
     return matchesSearch;
   });
-
-  const handleAddSupplier = () => {
-    // In a real app, this would add the supplier to the database
-    setIsAddDialogOpen(false);
-  };
-
-  const handleEditSupplier = (supplier: Supplier) => {
-    setSelectedSupplier(supplier);
-    setIsAddDialogOpen(true);
-  };
-
-  const handleDeleteSupplier = (supplier: Supplier) => {
-    setSelectedSupplier(supplier);
-    setIsDeleteAlertOpen(true);
-  };
-
-  const confirmDelete = () => {
-    // In a real app, this would delete the supplier from the database
-    setIsDeleteAlertOpen(false);
-    setSelectedSupplier(null);
-  };
 
   return (
     <div className="w-full h-full bg-white p-6 rounded-lg shadow-sm">
@@ -200,123 +233,14 @@ const SupplierManager = ({ suppliers = [] }: SupplierManagerProps) => {
             Manage your product suppliers and their details
           </p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              <span>Add Supplier</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle>
-                {selectedSupplier ? "Edit Supplier" : "Add New Supplier"}
-              </DialogTitle>
-              <DialogDescription>
-                Fill in the details to {selectedSupplier ? "update" : "add"} a
-                supplier.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label htmlFor="name" className="text-sm font-medium">
-                    Supplier Name
-                  </label>
-                  <Input
-                    id="name"
-                    defaultValue={selectedSupplier?.name || ""}
-                    placeholder="Enter supplier name"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="contactPerson"
-                    className="text-sm font-medium"
-                  >
-                    Contact Person
-                  </label>
-                  <Input
-                    id="contactPerson"
-                    defaultValue={selectedSupplier?.contactPerson || ""}
-                    placeholder="Enter contact name"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="email" className="text-sm font-medium">
-                    Email
-                  </label>
-                  <Input
-                    id="email"
-                    type="email"
-                    defaultValue={selectedSupplier?.email || ""}
-                    placeholder="Enter email address"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="phone" className="text-sm font-medium">
-                    Phone
-                  </label>
-                  <Input
-                    id="phone"
-                    defaultValue={selectedSupplier?.phone || ""}
-                    placeholder="Enter phone number"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="website" className="text-sm font-medium">
-                    Website
-                  </label>
-                  <Input
-                    id="website"
-                    defaultValue={selectedSupplier?.website || ""}
-                    placeholder="Enter website URL"
-                    className="mt-1"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label htmlFor="address" className="text-sm font-medium">
-                    Address
-                  </label>
-                  <Input
-                    id="address"
-                    defaultValue={selectedSupplier?.address || ""}
-                    placeholder="Enter full address"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="status" className="text-sm font-medium">
-                    Status
-                  </label>
-                  <select
-                    id="status"
-                    defaultValue={selectedSupplier?.status || "active"}
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm mt-1"
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setIsAddDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleAddSupplier}>
-                {selectedSupplier ? "Update Supplier" : "Add Supplier"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button
+          onClick={() => {
+            resetForm();
+            setIsAddDialogOpen(true);
+          }}
+        >
+          <Plus className="mr-2 h-4 w-4" /> Add Supplier
+        </Button>
       </div>
 
       <div className="flex justify-between items-center mb-6">
@@ -342,56 +266,70 @@ const SupplierManager = ({ suppliers = [] }: SupplierManagerProps) => {
         </Tabs>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableCaption>A list of your suppliers.</TableCaption>
-            <TableHeader>
+      <div className="rounded-md border overflow-hidden">
+        <Table>
+          <TableCaption>A list of your suppliers.</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Contact Person</TableHead>
+              <TableHead>Contact Info</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Supplier</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Products</TableHead>
-                <TableHead>Last Order</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableCell colSpan={5} className="h-24 text-center">
+                  <div className="flex justify-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                  </div>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredSuppliers.map((supplier) => (
+            ) : filteredSuppliers.length > 0 ? (
+              filteredSuppliers.map((supplier) => (
                 <TableRow key={supplier.id}>
-                  <TableCell className="font-medium">{supplier.id}</TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{supplier.name}</div>
-                      <div className="text-sm text-muted-foreground truncate max-w-[200px]">
-                        {supplier.address}
-                      </div>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <Truck className="h-4 w-4 text-gray-500" />
+                      <span>{supplier.name}</span>
                     </div>
                   </TableCell>
+                  <TableCell>{supplier.contact_person || "-"}</TableCell>
                   <TableCell>
-                    <div>
-                      <div className="font-medium">
-                        {supplier.contactPerson}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {supplier.email}
-                      </div>
+                    <div className="space-y-1">
+                      {supplier.email && (
+                        <div className="flex items-center text-sm">
+                          <Mail className="h-3 w-3 mr-1 text-gray-500" />
+                          <span>{supplier.email}</span>
+                        </div>
+                      )}
+                      {supplier.phone && (
+                        <div className="flex items-center text-sm">
+                          <Phone className="h-3 w-3 mr-1 text-gray-500" />
+                          <span>{supplier.phone}</span>
+                        </div>
+                      )}
+                      {supplier.website && (
+                        <div className="flex items-center text-sm">
+                          <Globe className="h-3 w-3 mr-1 text-gray-500" />
+                          <span>{supplier.website}</span>
+                        </div>
+                      )}
+                      {!supplier.email &&
+                        !supplier.phone &&
+                        !supplier.website &&
+                        "-"}
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={
-                        supplier.status === "active" ? "default" : "secondary"
-                      }
+                      variant="secondary"
                       className={`${supplier.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}`}
                     >
                       {supplier.status === "active" ? "Active" : "Inactive"}
                     </Badge>
-                  </TableCell>
-                  <TableCell>{supplier.productsCount}</TableCell>
-                  <TableCell>
-                    {supplier.lastOrderDate || "No orders yet"}
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -403,14 +341,17 @@ const SupplierManager = ({ suppliers = [] }: SupplierManagerProps) => {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          onClick={() => handleEditSupplier(supplier)}
+                          onClick={() => openEditDialog(supplier)}
                         >
                           <Edit className="mr-2 h-4 w-4" />
                           <span>Edit</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-red-600"
-                          onClick={() => handleDeleteSupplier(supplier)}
+                          onClick={() => {
+                            setSelectedSupplier(supplier);
+                            setIsDeleteDialogOpen(true);
+                          }}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
                           <span>Delete</span>
@@ -419,13 +360,286 @@ const SupplierManager = ({ suppliers = [] }: SupplierManagerProps) => {
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={5}
+                  className="h-24 text-center text-muted-foreground"
+                >
+                  {searchQuery
+                    ? "No suppliers found matching your search."
+                    : "No suppliers found. Add your first supplier!"}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+      {/* Add Supplier Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Add New Supplier</DialogTitle>
+            <DialogDescription>
+              Fill in the details to add a supplier.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label htmlFor="name" className="text-sm font-medium">
+                  Supplier Name *
+                </label>
+                <Input
+                  id="name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="Enter supplier name"
+                  className="mt-1"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="contact_person" className="text-sm font-medium">
+                  Contact Person
+                </label>
+                <Input
+                  id="contact_person"
+                  name="contact_person"
+                  value={formData.contact_person}
+                  onChange={handleInputChange}
+                  placeholder="Enter contact name"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="email" className="text-sm font-medium">
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  placeholder="Enter email address"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="phone" className="text-sm font-medium">
+                  Phone
+                </label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  placeholder="Enter phone number"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="website" className="text-sm font-medium">
+                  Website
+                </label>
+                <Input
+                  id="website"
+                  name="website"
+                  value={formData.website}
+                  onChange={handleInputChange}
+                  placeholder="Enter website URL"
+                  className="mt-1"
+                />
+              </div>
+              <div className="col-span-2">
+                <label htmlFor="address" className="text-sm font-medium">
+                  Address
+                </label>
+                <Input
+                  id="address"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleInputChange}
+                  placeholder="Enter full address"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="status" className="text-sm font-medium">
+                  Status
+                </label>
+                <select
+                  id="status"
+                  name="status"
+                  value={formData.status}
+                  onChange={handleInputChange}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm mt-1"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAddDialogOpen(false);
+                resetForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddSupplier}
+              disabled={isSaving || !formData.name}
+            >
+              {isSaving ? "Adding..." : "Add Supplier"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Supplier Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Edit Supplier</DialogTitle>
+            <DialogDescription>Update the supplier details.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label htmlFor="edit-name" className="text-sm font-medium">
+                  Supplier Name *
+                </label>
+                <Input
+                  id="edit-name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="Enter supplier name"
+                  className="mt-1"
+                  required
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="edit-contact_person"
+                  className="text-sm font-medium"
+                >
+                  Contact Person
+                </label>
+                <Input
+                  id="edit-contact_person"
+                  name="contact_person"
+                  value={formData.contact_person}
+                  onChange={handleInputChange}
+                  placeholder="Enter contact name"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-email" className="text-sm font-medium">
+                  Email
+                </label>
+                <Input
+                  id="edit-email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  placeholder="Enter email address"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-phone" className="text-sm font-medium">
+                  Phone
+                </label>
+                <Input
+                  id="edit-phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  placeholder="Enter phone number"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-website" className="text-sm font-medium">
+                  Website
+                </label>
+                <Input
+                  id="edit-website"
+                  name="website"
+                  value={formData.website}
+                  onChange={handleInputChange}
+                  placeholder="Enter website URL"
+                  className="mt-1"
+                />
+              </div>
+              <div className="col-span-2">
+                <label htmlFor="edit-address" className="text-sm font-medium">
+                  Address
+                </label>
+                <Input
+                  id="edit-address"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleInputChange}
+                  placeholder="Enter full address"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-status" className="text-sm font-medium">
+                  Status
+                </label>
+                <select
+                  id="edit-status"
+                  name="status"
+                  value={formData.status}
+                  onChange={handleInputChange}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm mt-1"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditDialogOpen(false);
+                setSelectedSupplier(null);
+                resetForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEditSupplier}
+              disabled={isSaving || !formData.name}
+            >
+              {isSaving ? "Updating..." : "Update Supplier"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
@@ -436,8 +650,12 @@ const SupplierManager = ({ suppliers = [] }: SupplierManagerProps) => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-red-600">
-              Delete
+            <AlertDialogAction
+              onClick={handleDeleteSupplier}
+              className="bg-red-600"
+              disabled={isSaving}
+            >
+              {isSaving ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

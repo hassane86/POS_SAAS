@@ -23,6 +23,8 @@ import {
 import StoreForm from "./StoreForm";
 import { getStoreById, updateStore } from "@/api/stores";
 import { Store } from "@/types/database";
+import StoreInventoryManager from "@/components/inventory/StoreInventoryManager";
+import StoreWarehouseAssignment from "@/components/stores/StoreWarehouseAssignment";
 
 const StoreDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -219,13 +221,9 @@ const StoreDetail: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-center h-40">
-                  <div className="text-center">
-                    <Package className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-muted-foreground">
-                      Inventory management coming soon
-                    </p>
-                  </div>
+                <div className="space-y-6">
+                  <StoreInventoryManager storeId={id} />
+                  <StoreWarehouseAssignment storeId={id} />
                 </div>
               </CardContent>
             </Card>

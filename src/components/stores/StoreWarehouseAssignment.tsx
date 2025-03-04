@@ -37,7 +37,7 @@ import {
   Building2,
   Plus,
   Link,
-  LinkOff,
+  Unlink,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -286,7 +286,7 @@ const StoreWarehouseAssignment: React.FC<StoreWarehouseAssignmentProps> = ({
                       onClick={() => handleRemoveWarehouse(assignment.id)}
                       className="text-red-500 hover:text-red-700"
                     >
-                      <LinkOff className="mr-2 h-4 w-4" />
+                      <Unlink className="mr-2 h-4 w-4" />
                       Unassign
                     </Button>
                   </TableCell>
